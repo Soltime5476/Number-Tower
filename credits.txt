@@ -1,0 +1,43 @@
+Put links here 👍
+
+Sprites
+
+player.png by Grower
+https://www.cleanpng.com/png-sprite-knight-animation-computer-graphics-shield-5156707/ 
+
+enemy.png by Unknown
+https://www.pngwing.com/en/free-png-bugnz 
+
+Fonts
+
+headliner by KC Fonts
+https://www.fontspace.com/headliner-no-45-font-f13428 
+
+aurora by Storytype Studio 
+https://www.dafont.com/aurora-6.font
+
+Backgrounds
+
+EndScene.png by The Outlander
+https://the-outlander.itch.io/free-dungeon-backgrounds 
+
+IntroScene.png by Spring Spring
+https://opengameart.org/content/the-war-over-a-melon-field-main-menu-background 
+
+LevelScene.png by Unknown
+https://craftpix.net/freebies/free-rpg-battleground-asset-pack/
+
+Sound Effects 
+
+enemy_attack.mp3 by Pixabay
+https://cdn.pixabay.com/download/audio/2021/08/09/audio_420245a900.mp3?filename=fist-punch-or-kick-7171.mp3
+
+player_slash.mp3 by Pixabay
+https://cdn.pixabay.com/download/audio/2022/03/25/audio_8e2d270aad.mp3?filename=axe-slash-1-106748.mp3
+
+victory.mp3 by Pixabay
+
+https://cdn.pixabay.com/download/audio/2021/08/04/audio_12b0c7443c.mp3?filename=success-fanfare-trumpets-6185.mp3
+
+game_over.mp3 from airfighter3 sample
+

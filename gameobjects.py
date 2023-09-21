@@ -1,44 +1,40 @@
 import pygame
-import random
+import pygame.mixer
 from constants import *
-from typing import Any, Self, Optional, List, Tuple, Deque
-from collections import deque
+from typing import Any, Self, Optional, List, Tuple
 
-class CameraGroup(pygame.sprite.LayeredUpdates):
-    def __init__(self):
-        super().__init__()
-        self.display_surf = pygame.display.get_surface()
-        self.shifting_time = 1500
-        # camera offset
-        self.offset = pygame.math.Vector2(-CAMERA_OFFSET, 0)
+ENEMIES = pygame.sprite.Group()
+BLOCKS = pygame.sprite.Group()
+LEVEL_SPRITES = pygame.sprite.LayeredUpdates()
 
 class GameObjects(pygame.sprite.Sprite):
     def __init__(self, pos: tuple[int, int]):
         super(GameObjects, self).__init__()
         self.x_pos, self.y_pos = pos
-        self.rect: pygame.Rect
+        self.image = pygame.Surface((0, 0))
+        self.rect = pygame.Rect((0, 0, 0, 0))
         self.shifting = False
-        ALL_SPRITES.add(self)
+        LEVEL_SPRITES.add(self)
 
     def shift(self):
-        if self.rect.left > self.x_pos - CAMERA_OFFSET:   
+        if self.rect.left > self.x_pos - CAMERA_OFFSET:
             self.rect.move_ip(-CAMERA_OFFSET / 90, 0)
             return True
-        else: 
+        else:
             self.rect.left = self.x_pos - CAMERA_OFFSET
             self.x_pos = self.rect.left
             return False
-
-            
+        
 class Character(GameObjects):
-    power_font = pygame.font.SysFont("Times New Roman", FONT_SIZE)
-    
+    sprite = None
     def __init__(self, pos: Tuple[int, int]):
         self._layer = 2
         super(Character, self).__init__(pos)
-        CHARACTERS.add(self)
+        # power should be at most 99999 as rendering 6+ digits can lead to issues
         self.power = 0
+        self.attacked = False
         self.alpha = 255
+        self.frame_counter = 0
         self.render_offset = 0
         self.width = CHARACTER_WIDTH
         self.height = CHARACTER_HEIGHT
@@ -46,52 +42,112 @@ class Character(GameObjects):
             (CHARACTER_WIDTH, CHARACTER_HEIGHT + POWER_HEIGHT), pygame.SRCALPHA
         )
         self.power_surf = self.image.subsurface((0, 0, CHARACTER_WIDTH, POWER_HEIGHT))
-        self.character_surf = self.image.subsurface(0, POWER_HEIGHT, CHARACTER_WIDTH, CHARACTER_HEIGHT)
-        # create transparent space above player for score display
-        #self.image.fill((0, 0, 0, 0), rect=(0, 0, CHARACTER_WIDTH, POWER_HEIGHT))
+        self.power_surf.set_colorkey(BLACK)
+        self.character_surf = self.image.subsurface(
+            0, POWER_HEIGHT, CHARACTER_WIDTH, CHARACTER_HEIGHT
+        )
         self.rect = self.image.get_rect(topleft=pos)
-        self.is_dying = False
+        # need to first blit the static image onto character subsurface 
+        self.character_rect = self.character_surf.blit(self.sprite, (0, 0))
+        self.vet = pygame.math.Vector2(self.character_rect.right, self.character_rect.bottom) / 30
+        self.attacking = False
+        self.dying = False
         self.deceased = False
-        
+        self.event_when_died = None
+
     def render_power(self) -> pygame.Rect:
         self.power_surf.fill(TRANSPARENT)
-        power_text = self.power_font.render(str(self.power), 1, BLACK)
+        power_text = POWER_FONT.render(str(self.power), 1, BLACK)
         place_pos = (CHARACTER_WIDTH - power_text.get_width()) // 2 - self.render_offset
-        power_rect = self.power_surf.blit(power_text, (place_pos, 0))
-        return power_rect
+        self.power_rect = self.power_surf.blit(power_text, (place_pos, 0))
 
-    def combat(self, other: Self) -> bool:
-        player_won = True
-        if self.power > other.power: 
-            self.power += other.power           
-            other.is_dying = True
-        else:
-            self.is_dying = True
-            player_won = False
-        return player_won
-    
     def update(self) -> None:
-        if self.is_dying:
-            if self.alpha > 0:
-                self.alpha -= 5
-                self.image.set_alpha(self.alpha) 
-            else: 
-                self.kill() 
-                self.deceased = True
+        self.render_power() 
+        if self.attacked:
+            pygame.draw.line(self.character_surf, BLOOD, (0, 0), self.frame_counter * self.vet, 3)
+            if self.frame_counter >= 30: 
+                self.frame_counter = 0
+                self.attacked = False
+                self.dying = True
+            self.frame_counter += 1    
+        if self.dying:
+            self.fade_out()
+        if self.deceased:
+            pygame.event.post(self.event_when_died)
+
+    def fade_out(self) -> None:     
+        if self.alpha > 0:
+            self.alpha -= 5
+            self.image.set_alpha(self.alpha)
         else:
-            self.render_power()
-        
+            self.kill()
+            self.deceased = True
+
 class Enemy(Character):
+    sprite = pygame.image.load("./assets/sprites/enemy.PNG").convert_alpha()
+    attack_sfx = pygame.mixer.Sound('./assets/sounds/enemy_attack.mp3')
     def __init__(self, pos: tuple[int, int], power: int):
         super(Enemy, self).__init__(pos)
+        self.event_when_died = BLOCK_CLEARED
         self.power = power
         self.render_offset = 5
-        CHARACTERS.add(self)
-        enemy_sprite = pygame.image.load('./assets/enemy.PNG').convert_alpha()
-        self.character_surf.blit(enemy_sprite, (0, 0))
-
+        ENEMIES.add(self)
         
+    '''def update(self) -> None:
+        self.render_power() 
+        if self.attacked:
+            pygame.draw.line(self.character_surf, BLOOD, (0, 0), self.frame_counter * self.vet, 3)
+            if self.frame_counter >= 30: 
+                self.frame_counter = 0
+                self.attacked = False
+                self.dying = True
+            self.frame_counter += 1    
+        if self.dying:
+            self.fade_out()
+        if self.deceased:
+            pygame.event.post(BLOCK_CLEARED)'''
         
+               
+class Player(Character):
+    sprite = pygame.image.load("./assets/sprites/player.PNG").convert_alpha()
+    attack_sfx = pygame.mixer.Sound('./assets/sounds/player_slash.mp3')
+    def __init__(self, pos) -> None:
+        super(Player, self).__init__(pos)       
+        self.event_when_died = GAME_OVER
+        self.render_offset = 6.5 
+        self.power = 10
+    
+    '''def update(self) -> None:
+        if self.attacked:
+            pygame.draw.line(self.character_surf, BLOOD, (0, 0), self.frame_counter * self.vet, 3)
+            if self.frame_counter >= 30: 
+                self.frame_counter = 0
+                self.attacked = False
+                self.dying = True
+            self.frame_counter += 1    
+        if self.dying:
+            self.fade_out()
+        if self.deceased:
+            pygame.time.wait(150)
+            pygame.event.post(GAME_OVER)
+        else:
+            self.render_power()'''    
+        
+    def interact(self, entity: GameObjects):
+        if isinstance(entity, Enemy):
+            return self.combat(entity)
+        
+    def combat(self, other: Enemy) -> bool:
+        if self.power > other.power:
+            self.attack_sfx.play()
+            if self.power + other.power > 99999:
+                self.power = 99999
+            else: self.power += other.power 
+            other.attacked = True   
+        else:
+            other.attack_sfx.play()
+            self.attacked = True   
+        return not self.attacked    
 
 class Block(GameObjects):
     """
@@ -102,41 +158,45 @@ class Block(GameObjects):
     """
 
     # inner rect for hover effects, relative to each block
-    CONTENT_RECT = pygame.Rect(
-        BLOCK_PADDING,
-        BLOCK_PADDING,
-        BLOCK_SIDE_WIDTH - 2 * BLOCK_PADDING,
-        BLOCK_SIDE_LENGTH - 2 * BLOCK_PADDING,
-    )
-
+    normal_image = pygame.image.load('./assets/sprites/block_normal.png').convert()
+    hover_image = pygame.image.load('./assets/sprites/block_hovered.png').convert()
+    
     def __init__(self, pos: Tuple[int, int]):
         self._layer = 1
         super(Block, self).__init__(pos)
         BLOCKS.add(self)
-        self.is_empty = True  # has no enemy or items
+        self.cleared = True  # has no enemy or items
         self.contained_entity = None
-        self.image = pygame.Surface((BLOCK_SIDE_WIDTH, BLOCK_SIDE_LENGTH))
-        self.image.fill(BLACK)
-        self.image.fill(WHITE, rect=self.CONTENT_RECT)
-        self.rect = pygame.Rect(pos, (BLOCK_SIDE_WIDTH, BLOCK_SIDE_LENGTH))
-
+        self.image = self.normal_image
+        self.rect = self.image.get_rect(topleft=pos)
+       
+        #self.rect = pygame.Rect(pos, (BLOCK_SIDE_WIDTH, BLOCK_SIDE_LENGTH))
+        
     def on_mouse_hover(self):
-        self.image.fill(GREY, rect=self.CONTENT_RECT)
+        self.image = self.hover_image
 
     def on_mouse_leave(self):
-        self.image.fill(WHITE, rect=self.CONTENT_RECT)
-
-    def add_enemy(self, enemy: Enemy):
+        self.image = self.normal_image
+        
+    def add_enemy(self, enemy):
         x_coord = self.rect.right - BLOCK_PADDING - 20 - enemy.width
-        y_coord = self.rect.bottom - BLOCK_PADDING - POWER_HEIGHT - enemy.height 
+        y_coord = self.rect.bottom - BLOCK_PADDING - POWER_HEIGHT - enemy.height
         enemy.rect = self.image.blit(enemy.image, (x_coord, y_coord))
         enemy.x_pos, enemy.y_pos = enemy.rect.topleft
         self.contained_entity = enemy
-        self.is_empty = False
+        self.cleared = False
 
     def update(self) -> None:
         if self.rect.size == (0, 0) and self.rect.left == 0:
             self.kill()
+
+class Roof(GameObjects):
+    def __init__(self, pos: tuple[int, int]):
+        self._layer = 1 
+        super(Roof, self).__init__(pos)
+        self.image = pygame.image.load('./assets/sprites/roof1.png').convert()
+        self.image.set_colorkey(BLACK)
+        self.rect = pygame.Rect(pos, (240, 125))
 
 class SubTower:
     """
@@ -149,88 +209,14 @@ class SubTower:
     def __init__(self, x_pos: float, stack_num):
         self.blocks_stack: List[Block] = []
         for i in range(1, stack_num + 1):
-            y_pos = SCREEN_HEIGHT - BLOCK_SIDE_LENGTH * i 
+            y_pos = SCREEN_HEIGHT - BLOCK_SIDE_LENGTH * i
             new_block = Block((x_pos + 5, y_pos))
             self.blocks_stack.append(new_block)
+        roof_pos = (self.blocks_stack[-1].rect.left, self.blocks_stack[-1].rect.top - 113)
+        tower_roof = Roof(roof_pos)
+
 
     def is_cleared(self):
-        return all(i.is_empty for i in self.blocks_stack)
-
-
-class Player(Character):
-    def __init__(self, pos) -> None:
-        super(Player, self).__init__(pos)
-        # power should be at most 9999 as rendering 5+ digits can lead to issues
-        self.render_offset = 6.5
-        self.power = 10
-        self.current_block: Optional(Block) = None
-        #self.character_surf.fill(SKY_BLUE)
-        player_sprite = pygame.image.load('./assets/player.PNG').convert_alpha()
-        self.character_surf.blit(player_sprite, (0, 0))
-        
-    def teleport_to(self, block: Block):
-        pass
-             
-    def interact(self, entity: GameObjects):
-        if isinstance(entity, Enemy):
-            return self.combat(entity)
-
-
-class LevelLayout:
-    """
-    Represents the whole level layout consisting of subtowers, enemies and items \n
-    Constructor:
-    height_seq: a non-decreasing sequence representing the height of each subtower
-
-    """
-
-    def __init__(self, height_seq: List[int], player: Player, screen: pygame.Surface):
-        self.player = player
-        self.queue: Deque[SubTower] = deque()
-        
-        for i, j in enumerate(height_seq, start=1):
-            # Each subtower is 180 pixels wide and spacing between them is 100 pixels
-            x_pos = (CAMERA_OFFSET) * i
-            tower = SubTower(x_pos, j)
-            self.queue.append(tower)
-        self.current_tower = self.queue[0]    
-        self.make_enemies()
-        
-    # create enemies in each block
-    def make_enemies(self):
-        min_power = 1
-        max_power = self.player.power - 1
-        for i in self.queue:
-            shuffled_tower = random.sample(i.blocks_stack, k=len(i.blocks_stack))
-            for j in shuffled_tower:
-                enemy_power = random.randint(min_power, max_power)
-                min_power = max_power
-                max_power = min_power + enemy_power
-                if max_power >= 9999: 
-                    max_power = 9999
-                new_enemy = Enemy((0,0), enemy_power)
-                j.add_enemy(new_enemy)
+        return all(i.cleared for i in self.blocks_stack)
+ 
     
-    def teleport_player_to(self, block: Block) -> None:
-        if block.is_empty or block not in self.current_tower.blocks_stack:
-            return
-        dx = block.x_pos + (BLOCK_PADDING + 10 - self.player.x_pos)
-        dy = (block.rect.bottom - self.player.rect.bottom) - BLOCK_PADDING
-        self.player.rect.move_ip(dx, dy)
-        self.player.x_pos, self.player.y_pos = self.player.rect.topleft
-        self.player.current_block = block
-        block.is_empty = self.player.interact(block.contained_entity)
-        if self.current_tower.is_cleared():
-            pygame.event.post(TOWER_CLEARED)
-
-    def handle_event(self, event: pygame.event.Event):
-        pass            
-                
-
-    @classmethod        
-    def load_dict(cls):
-        pass        
-
-CHARACTERS = pygame.sprite.Group()
-BLOCKS = pygame.sprite.Group()
-ALL_SPRITES = CameraGroup()

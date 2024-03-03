@@ -10,7 +10,7 @@ python = "^3.11"
 pygame = "^2.5.0"
 
 [tool.ruff]
-ignored = ['E501']
+ignore = ['E501']
 
 [build-system]
 requires = ["poetry-core"]
